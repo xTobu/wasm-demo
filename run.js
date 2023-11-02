@@ -7,7 +7,8 @@ globalThis.crypto ??= require('crypto');
 
 require('./wasm_exec.js');
 
-
+// isWait = true, 代表是否要等到 go 執行結束後再執行 js 程式碼
+// isWait = false, 如果 js 需要呼叫 go 方法, 那就不能 wait
 module.exports = async (wasmPath, isWait) => {
     const buf = fs.readFileSync(wasmPath);
     const go = new Go();
@@ -17,8 +18,13 @@ module.exports = async (wasmPath, isWait) => {
             process.on('exit', (code) => {
                 process.exit();
             });
-
-            go.run(result.instance);
+            
+            if (isWait) {
+                return go.run(result.instance);
+            } else {
+                go.run(result.instance);
+            }
+            return;
         })
         .catch((err) => {
             console.error('err: ', err);

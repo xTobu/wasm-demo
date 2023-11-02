@@ -1,48 +1,75 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"syscall/js"
-
-	"github.com/ethereum/go-ethereum/crypto"
+	"time"
 )
 
-func add(this js.Value, args []js.Value) interface{} {
+type fn func(this js.Value, args []js.Value) (any, error)
+
+var (
+	jsErr     js.Value = js.Global().Get("Error")
+	jsPromise js.Value = js.Global().Get("Promise")
+)
+
+func asyncFunc(innerFunc fn) js.Func {
+	return js.FuncOf(func(this js.Value, args []js.Value) any {
+		handler := js.FuncOf(func(_ js.Value, promFn []js.Value) any {
+			resolve, reject := promFn[0], promFn[1]
+
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						reject.Invoke(jsErr.New(fmt.Sprint("panic:", r)))
+					}
+				}()
+
+				res, err := innerFunc(this, args)
+				if err != nil {
+					reject.Invoke(jsErr.New(err.Error()))
+				} else {
+					resolve.Invoke(res)
+				}
+			}()
+
+			return nil
+		})
+
+		return jsPromise.New(handler)
+	})
+}
+
+func twoSum(this js.Value, args []js.Value) (result any, err error) {
+	fmt.Println("[main.wasm][twoSum] Triggered.")
+	fmt.Println("[main.wasm][twoSum] Sleep 1 seconds, test async.")
+	time.Sleep(1 * time.Second)
+	fmt.Println("[main.wasm][twoSum] Awake!")
+
+	if len(args) != 2 {
+		err = fmt.Errorf("[main.wasm][twoSum] args length is not equal two.")
+		return
+	}
+
 	a, b := args[0].Int(), args[1].Int()
-	return a + b
+	result = a + b
+
+	return
 }
 
 func show(this js.Value, args []js.Value) interface{} {
-	a, b := args[0].String(), args[1].String()
 
-	return fmt.Sprintf("%s%s", a, b)
-}
-
-func Keccak256(this js.Value, args []js.Value) interface{} {
-	if len(args) != 1 {
-		return "invalid params"
-	}
-	data := args[0].String()
-	hash := crypto.Keccak256([]byte(data))
-	return hex.EncodeToString(hash)
-}
-
-func decrypt(this js.Value, args []js.Value) interface{} {
-	println("#### decrypt 1")
-	aa := args[0].String()
-	// fmt.Println("#### decrypt 2 aa: ", aa)
-	// fmt.Println("#### decrypt 3")
-	// fmt.Println("#### decrypt 5 plainText ", "aaaaa")
-	return aa
+	return fmt.Sprintf("%v", args)
 }
 
 func main() {
-	js.Global().Set("add", js.FuncOf(add))
+	// pure func: 當 Go 處理 goroutine 時, JS 無法等待, 會發生 deadlock
 	js.Global().Set("show", js.FuncOf(show))
-	js.Global().Set("Keccak256", js.FuncOf(Keccak256))
-	js.Global().Set("decA", js.FuncOf(decrypt))
-	fmt.Println("[main.wasm] Successfully.")
+
+	// async func: 包裝一層 goroutine, 調用 js.Promise 和 js.Error
+	js.Global().Set("twoSum", asyncFunc(twoSum))
+
+	fmt.Println("[main.wasm] Loaded.")
 
 	<-make(chan bool)
 }
