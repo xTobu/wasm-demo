@@ -28,3 +28,20 @@ cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" .
     // "go.buildTags": "js, wasm"
 }
 ```
+
+## Step
+### Go
+```sh
+// 使用 Go, 編譯 wasm
+GOOS=js GOARCH=wasm go build -o main.wasm .
+```
+
+### Node.js
+```sh
+// 透過 Node.js app, 取用 wasm
+node index.js
+```
+
+## Ref
+### Golang WASM JS Async Function
+* https://dev.to/clavinjune/golang-wasm-async-function-35j2
